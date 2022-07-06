@@ -30,6 +30,7 @@ import yaml
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD, Adam, AdamW, lr_scheduler
 from tqdm import tqdm
+from utils.loggers.clearml.clearml_utils import check_clearml_resume
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -96,6 +97,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if loggers.clearml:
             # Data_dict is either None is user did not choose for ClearML dataset or is filled in by ClearML
             data_dict = loggers.clearml.data_dict
+            if check_clearml_resume(opt):
+                opt, hyp = loggers.clearml.get_previous_model(opt)
+                weights, epochs, batch_size = opt.weights, opt.epochs, opt.batch_size
 
         # Register actions
         for k in methods(loggers):
@@ -421,6 +425,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     'updates': ema.updates,
                     'optimizer': optimizer.state_dict(),
                     'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None,
+                    'clearml_id': loggers.clearml.task.id if loggers.clearml else None,
                     'date': datetime.now().isoformat()}
 
                 # Save last, best and delete
@@ -527,7 +532,7 @@ def main(opt, callbacks=Callbacks()):
         check_requirements(exclude=['thop'])
 
     # Resume
-    if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
+    if opt.resume and not check_wandb_resume(opt) and not check_clearml_resume(opt) and not opt.evolve:  # resume an interrupted run
         ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         with open(Path(ckpt).parent.parent / 'opt.yaml', errors='ignore') as f:
