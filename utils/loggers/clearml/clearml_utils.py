@@ -1,4 +1,6 @@
 """Main Logger class for ClearML experiment tracking."""
+import argparse
+import ast
 import glob
 from pathlib import Path
 import re
@@ -44,6 +46,12 @@ def construct_dataset(clearml_info_string):
     return data_dict
 
 
+def check_clearml_resume(opt):
+    """Check if a clearml string was provided for resume."""
+    if isinstance(opt.resume, str):
+        return opt.resume.startswith('clearml:')
+
+
 class ClearmlLogger:
     """Log training runs, datasets, models, and predictions to ClearML.
 
@@ -78,12 +86,22 @@ class ClearmlLogger:
         self.task = None
         self.data_dict = None
         if self.clearml:
+            last_task_id = False
+            enable_parameter_detection = True
+            if check_clearml_resume(opt):
+                last_task_id = opt.resume.replace('clearml:', '')
+                # We disable parameter detection on resume, because we already have them
+                # and this would just override them with the defaults that are loaded
+                enable_parameter_detection = False
+
             self.task = Task.init(
                 project_name='YOLOv5',
                 task_name='training',
                 tags=['YOLOv5'],
                 output_uri=True,
-                auto_connect_frameworks={'pytorch': False}
+                auto_connect_frameworks={'pytorch': False},
+                continue_last_task=last_task_id,
+                auto_connect_arg_parser=enable_parameter_detection
             )
             # ClearML's hooks will already grab all general parameters
             # Only the hyperparameters coming from the yaml config file
@@ -95,6 +113,30 @@ class ClearmlLogger:
                 # data_dict should have the following keys:
                 # names, nc (number of classes), test, train, val (all three relative paths to ../datasets)
                 self.data_dict = construct_dataset(opt.data)
+
+    def get_previous_model(self, opt):
+        """
+        Get the previously saved last model so we can restart from there.
+
+        arguments:
+        opt (Namespace) the argument namespace
+        """
+        outputmodels = self.task.models['output']
+        if len(outputmodels) > 0:
+            latest_model = outputmodels[-1].get_weights()  # This will be a link to a .pt file somewhere on disk
+        else:
+            raise ValueError('The supplied task does not have a model attached to start from!')
+        params = self.task.get_parameters_as_dict(cast=True)
+        # Not all types are inferred by ClearML
+        for k, v in params['Args'].items():
+            if v == 'False' or v == 'True':
+                params['Args'][k] = ast.literal_eval(v)
+
+        opt = argparse.Namespace(**params['Args'])
+        hyp = params['Hyperparameters']
+        opt.weights = latest_model
+
+        return opt, hyp
 
     def log_debug_samples(self, files, title='Debug Samples'):
         """
