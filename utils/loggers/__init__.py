@@ -11,7 +11,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from utils.general import colorstr, cv2, emojis
-from utils.loggers.clearml.clearml_utils import ClearmlLogger
+from utils.loggers.clearml.clearml_utils import ClearmlLogger, check_clearml_resume
 from utils.loggers.wandb.wandb_utils import WandbLogger
 from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
@@ -81,6 +81,16 @@ class Loggers():
         # ClearML
         if clearml and 'clearml' in self.include:
             self.clearml = ClearmlLogger(self.opt, self.hyp)
+            if check_clearml_resume(opt) and wandb:
+                prefix = colorstr('ClearML: ')
+                s = f"{prefix}resuming from ClearML Task, disabling wandb tracking for this run."
+                self.logger.info(s)
+
+                # This is not a nice workaround, but wandb has no other way to be disabled when installed
+                # and when using resume, it is not properly initialized + thinks it is them who are resuming
+                temp_include = list(self.include)
+                temp_include.remove('wandb')
+                self.include = tuple(temp_include)
         else:
             self.clearml = None
 

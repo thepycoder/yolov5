@@ -113,6 +113,9 @@ class ClearmlLogger:
                 # data_dict should have the following keys:
                 # names, nc (number of classes), test, train, val (all three relative paths to ../datasets)
                 self.data_dict = construct_dataset(opt.data)
+                # Set data to data_dict because wandb will crash without this information and opt is the best way
+                # to give it to them
+                opt.data = self.data_dict
 
     def get_previous_model(self, opt):
         """
