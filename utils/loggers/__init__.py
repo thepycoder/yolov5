@@ -146,12 +146,6 @@ class Loggers():
                 if self.clearml:
                     self.clearml.log_debug_samples(files, title='Mosaics')
 
-    def on_train_epoch_start(self):
-        # Reset epoch image limit
-        if self.clearml:
-            self.clearml.current_epoch_logged_images = set()
-            self.clearml.current_epoch += 1
-
     def on_train_epoch_end(self, epoch):
         # Callback runs on train epoch end
         if self.wandb:
@@ -192,6 +186,11 @@ class Loggers():
             for k, v in x.items():
                 title, series = k.split('/')
                 self.clearml.task.get_logger().report_scalar(title, series, v, epoch)
+        
+        if self.clearml:
+            # Reset epoch image limit
+            self.clearml.current_epoch_logged_images = set()
+            self.clearml.current_epoch += 1
 
         if self.wandb:
             if best_fitness == fi:
